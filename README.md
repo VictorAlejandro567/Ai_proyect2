@@ -70,9 +70,9 @@ It should point to `.venv`.
 
 
 
-#### Coworker install steps (put this in your README)
+#### Coworker install steps
 
- clone the repo, then in PowerShell:
+clone the repo, then in PowerShell:
 
 cd path\to\Ai_proyect2
 python -m venv .venv
