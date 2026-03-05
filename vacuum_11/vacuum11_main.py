@@ -3,6 +3,29 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Protocol, Callable, Optional, Tuple
 import random
+import statistics
+
+"""
+PEAS specification for the vacuum world simulator:
+
+P (Performance measure): cumulative score where each time step the
+    environment gives +1 per clean square and subtracts 1 per action.
+    The simulator tracks `cumulative_score` in `PerformanceEvaluator`.
+
+E (Environment): explicit `VacuumEnvironment` with a `VacuumState` that
+    contains locations (graph adjacency), dirt distribution, agent location,
+    and step counter. The environment evolves via its transition (action
+    handlers) and does not depend on the agent implementation.
+
+A (Actuators): modular `action_handlers` mapping action names (e.g.,
+    Left/Right/Suck/NoOp) to handler callables. New actions can be added by
+    adding entries to this mapping.
+
+S (Sensors): modular `SensorModel` protocol. Example implementations include
+    `LocalDirtSensor` and `NoisyLocalDirtSensor`. Percepts are produced by
+    calling `env.percept()` which delegates to the sensor.
+"""
+
 
 
 # ============================================================
@@ -188,6 +211,15 @@ class SimpleReflexAgent:
         return Action.RIGHT
 
 
+# Random agent: chooses uniformly among available primitive actions.
+class RandomAgent:
+    def __init__(self, seed: Optional[int] = None):
+        self.rng = random.Random(seed)
+
+    def __call__(self, percept: Percept) -> str:
+        return self.rng.choice([Action.SUCK, Action.LEFT, Action.RIGHT, Action.NOOP])
+
+
 # ============================================================
 # World builder utilities (size/shape/dirt placement configurable)
 # ============================================================
@@ -239,14 +271,38 @@ def main() -> None:
 
     env = VacuumEnvironment(initial_state=state, sensor=sensor, evaluator=evaluator)
 
-    # Demo run with a simple reflex agent (not required by 2.11, but useful to show it works)
+    # Demo run with a simple reflex agent
     agent = SimpleReflexAgent()
     total = env.run(agent, steps=10)
 
     print("=== Vacuum World Simulator (Exercise 2.11) ===")
     print("Final state:", env.state)
-    print("Cumulative performance:", total)
+    print("Cumulative performance (simple reflex, single run):", total)
 
+    # Experimental requirement: run at least two different agents (reflex vs random)
+    def run_trials(agent_factory: Callable[[], AgentProgram], trials: int = 100, steps: int = 30):
+        results = []
+        for t in range(trials):
+            # Randomize initial dirt distribution for each trial (two-location world)
+            dirtA = random.choice([True, False])
+            dirtB = random.choice([True, False])
+            state_t = build_two_location_world(dirt_A=dirtA, dirt_B=dirtB, start=random.choice(["A", "B"]))
+            sensor_t = LocalDirtSensor()
+            evaluator_t = PerformanceEvaluator(reward_clean_per_square=1, action_cost=1)
+            env_t = VacuumEnvironment(initial_state=state_t, sensor=sensor_t, evaluator=evaluator_t)
+            agent_t = agent_factory()
+            score = env_t.run(agent_t, steps=steps)
+            results.append(score)
+        return results
+
+    trials = 100
+    steps = 30
+    reflex_results = run_trials(lambda: SimpleReflexAgent(), trials=trials, steps=steps)
+    random_results = run_trials(lambda: RandomAgent(), trials=trials, steps=steps)
+
+    print(f"\nExperimental comparison over {trials} trials, {steps} steps each:")
+    print(f"SimpleReflexAgent: mean={statistics.mean(reflex_results):.2f}, stdev={statistics.pstdev(reflex_results):.2f}")
+    print(f"RandomAgent:      mean={statistics.mean(random_results):.2f}, stdev={statistics.pstdev(random_results):.2f}")
 
 if __name__ == "__main__":
     main()
